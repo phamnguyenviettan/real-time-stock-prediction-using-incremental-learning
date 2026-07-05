@@ -1,0 +1,77 @@
+# ─── Python ───────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-log.txt
+.pytest_cache/
+
+# ─── Virtual environments ─────────────────────
+venv/
+env/
+.env/
+.venv/
+ENV/
+
+# ─── Jupyter ──────────────────────────────────
+.ipynb_checkpoints/
+
+# ─── ML / PyTorch model weights ───────────────
+*.pth
+*.pt
+*.ckpt
+*.pkl
+*.h5
+
+# ─── Backend outputs & logs ───────────────────
+backend/output_results/
+outputs/
+
+# ─── Node.js / Next.js ────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+.npm
+yarn-error.log*
+yarn-debug.log*
+
+# ─── Environment & secrets ────────────────────
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# ─── OS & Editor ──────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# ─── Docker runtime volumes ───────────────────
+docker-volumes/
+
+# ─── Large binary files ───────────────────────
+report.docx
+*.docx
+*.xlsx
+
+# ─── Spark temp files ─────────────────────────
+derby.log
+metastore_db/
+spark-warehouse/
+
+# ─── Logs ─────────────────────────────────────
+*.log
+logs/

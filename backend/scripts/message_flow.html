@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Closed-Loop Big Data Pipeline Topology</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #0b0f19;
+      --card-bg: rgba(17, 24, 39, 0.85);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --primary: #3b82f6;
+      --secondary: #10b981;
+      --accent: #f43f5e;
+      --yellow: #f59e0b;
+      --purple: #8b5cf6;
+      --text-main: #f8fafc;
+      --text-muted: #64748b;
+      --node-glow: rgba(59, 130, 246, 0.15);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+      overflow-y: auto;
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.1) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.05) 0px, transparent 50%);
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+      max-width: 800px;
+    }
+
+    header h1 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #60a5fa, #3b82f6, #10b981);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.025em;
+    }
+
+    header p {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 2rem;
+      width: 100%;
+      max-width: 1400px;
+      z-index: 2;
+    }
+
+    /* Diagram Panel - Closed loop needs space */
+    .diagram-panel {
+      position: relative;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      height: 1080px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+
+    .panel-header {
+      position: absolute;
+      top: 1.5rem;
+      left: 1.5rem;
+      right: 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 1rem;
+    }
+
+    .btn-pulse {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      border: none;
+      padding: 0.8rem 1.8rem;
+      font-size: 0.95rem;
+      font-weight: 700;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: 0 10px 20px -10px rgba(16, 185, 129, 0.6);
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-pulse:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 15px 25px -5px rgba(16, 185, 129, 0.8);
+    }
+
+    /* Vertical Nodes Layout */
+    .node {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 140px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      z-index: 5;
+    }
+
+    .node-icon-wrapper {
+      width: 60px;
+      height: 60px;
+      border-radius: 18px;
+      background: rgba(15, 23, 42, 0.95);
+      border: 2px solid var(--border-color);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+      position: relative;
+      transition: all 0.3s;
+    }
+
+    .node:hover .node-icon-wrapper {
+      transform: scale(1.1);
+      border-color: var(--primary);
+      box-shadow: 0 0 20px var(--node-glow);
+    }
+
+    /* Node Color Types */
+    .node.client .node-icon-wrapper { border-color: var(--primary); }
+    .node.backend .node-icon-wrapper { border-color: var(--secondary); }
+    .node.kafka .node-icon-wrapper { border-color: var(--accent); }
+    .node.spark .node-icon-wrapper { border-color: var(--yellow); }
+
+    .node-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-align: center;
+      margin-top: 0.5rem;
+      color: var(--text-main);
+      white-space: nowrap;
+    }
+
+    .node-status {
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-top: 0.1rem;
+    }
+
+    /* Active Node Pulsing */
+    .node[data-active="true"] .node-icon-wrapper {
+      animation: nodePulse 1.5s infinite;
+    }
+
+    .node.client[data-active="true"] .node-icon-wrapper { border-color: var(--primary); box-shadow: 0 0 25px rgba(59, 130, 246, 0.5); }
+    .node.backend[data-active="true"] .node-icon-wrapper { border-color: var(--secondary); box-shadow: 0 0 25px rgba(16, 185, 129, 0.5); }
+    .node.kafka[data-active="true"] .node-icon-wrapper { border-color: var(--accent); box-shadow: 0 0 25px rgba(244, 63, 94, 0.5); }
+    .node.spark[data-active="true"] .node-icon-wrapper { border-color: var(--yellow); box-shadow: 0 0 25px rgba(245, 158, 11, 0.5); }
+
+    @keyframes nodePulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+
+    /* SVG Connecting Cables */
+    .svg-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .cable {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.04);
+      stroke-width: 3.5;
+      stroke-linecap: round;
+    }
+
+    .cable-glow {
+      fill: none;
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-dasharray: 1000;
+      stroke-dashoffset: 1000;
+      transition: stroke-dashoffset 0.6s ease-in-out;
+      opacity: 0.85;
+    }
+
+    /* Floating Packet Pill */
+    .packet-pill {
+      position: absolute;
+      background: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      pointer-events: none;
+      z-index: 20;
+      opacity: 0;
+      transform: translate(-50%, -50%);
+      transition: opacity 0.2s;
+    }
+
+    .packet-pill .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--primary);
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .sidebar-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 1.5rem;
+      backdrop-filter: blur(16px);
+    }
+
+    .sidebar-card h3 {
+      font-size: 0.95rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-main);
+      margin-bottom: 1.2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.6rem;
+    }
+
+    .metric-row {
+      display: flex;
+      justify-content: justify;
+      align-items: center;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      font-size: 0.85rem;
+    }
+
+    .metric-row:last-child {
+      border: none;
+    }
+
+    .metric-label {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .metric-value {
+      font-weight: 800;
+      color: #38bdf8;
+      font-family: monospace;
+    }
+
+    .log-panel {
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: #22d3ee;
+      height: 580px;
+      overflow-y: auto;
+      background: rgba(10, 15, 30, 0.8);
+      border-radius: 12px;
+      padding: 1rem;
+      line-height: 1.6;
+      border: 1px solid var(--border-color);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Kiến Trúc Dữ Liệu Khép Kín (Closed-Loop Pipeline)</h1>
+    <p>Quy trình truyền tin tuần hoàn khép kín: Trọng số nến giá ➔ Kafka (Raw) ➔ Spark Engine ➔ Kafka (Processed) ➔ Flask Stream ➔ Client Graph</p>
+  </header>
+
+  <div class="dashboard">
+    
+    <!-- Left: Topology Diagram (Vertical layout) -->
+    <div class="diagram-panel">
+      
+      <div class="panel-header">
+        <button class="btn-pulse" id="btn-transmit">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Chạy vòng tuần hoàn khép kín ➔
+        </button>
+        <div style="font-size: 0.75rem; font-weight: 700; color: #10b981; display: flex; align-items: center; gap: 0.4rem;">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display:inline-block; animation: pulse 1s infinite;"></span>
+          Closed-Loop Active
+        </div>
+      </div>
+
+      <!-- SVG Connectors representing cables -->
+      <svg class="svg-canvas" id="svg-canvas">
+        <path id="cable-0-1" class="cable" />
+        <path id="cable-1-2" class="cable" />
+        <path id="cable-2-3" class="cable" />
+        <path id="cable-3-4" class="cable" />
+        <path id="cable-4-5" class="cable" />
+        <path id="cable-5-6" class="cable" />
+        <path id="cable-6-7" class="cable" />
+
+        <!-- Glowing overlays -->
+        <path id="cable-0-1-glow" class="cable-glow" />
+        <path id="cable-1-2-glow" class="cable-glow" />
+        <path id="cable-2-3-glow" class="cable-glow" />
+        <path id="cable-3-4-glow" class="cable-glow" />
+        <path id="cable-4-5-glow" class="cable-glow" />
+        <path id="cable-5-6-glow" class="cable-glow" />
+        <path id="cable-6-7-glow" class="cable-glow" />
+      </svg>
+
+      <!-- Floating Packet Pill -->
+      <div class="packet-pill" id="packet-pill">
+        <span class="dot"></span>
+        <span id="packet-data">READY</span>
+      </div>
+
+      <!-- VERTICAL NODES IN A CLOSED LOOP -->
+      
+      <!-- Node 0: UI Request (Top Center) -->
+      <div class="node client" id="node-0" style="left: 310px; top: 120px;">
+        <div class="node-icon-wrapper">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+        </div>
+        <div class="node-title">1. UI Client Trigger</div>
+        <div class="node-status">Nhấp nút mô phỏng</div>
+      </div>
+
+      <!-- Node 1: Flask POST API -->
+      <div class="node backend" id="node-1" style="left: 310px; top: 240px;">
+        <div class="node-icon-wrapper">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+        </div>
+        <div class="node-title">2. Flask API Server</div>
+        <div class="node-status">Spawns Producer</div>
+      </div>
+
+      <!-- Node 2: CUDA PyTorch Engine -->
+      <div class="node backend" id="node-2" style="left: 310px; top: 360px;">
+        <div class="node-icon-wrapper">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        </div>
+        <div class="node-title">3. CUDA LSTM Engine</div>
+        <div class="node-status">Sinh nến giá thô</div>
+      </div>
+
+      <!-- Node 3: Kafka Topic 1 (raw-predictions) -->
+      <div class="node kafka" id="node-3" style="left: 310px; top: 490px;">
+        <div class="node-icon-wrapper">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        </div>
+        <div class="node-title">4. Topic: raw-predictions</div>
+        <div class="node-status">Chờ Spark tiêu thụ</div>
+      </div>
+
+      <!-- Node 4: Apache Spark Engine -->
+      <div class="node spark" id="node-4" style="left: 310px; top: 620px;">
+        <div class="node-icon-wrapper">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        </div>
+        <div class="node-title">5. Apache Spark Engine</div>
+        <div class="node-status">Xử lý & làm tròn nến</div>
+      </div>
+
+      <!-- Node 5: Kafka Topic 2 (processed-predictions) -->
+      <div class="node kafka" id="node-5" style="left: 310px; top: 750px;">
+        <div class="node-icon-wrapper">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        </div>
+        <div class="node-title">6. Topic: processed-preds</div>
+        <div class="node-status">Chờ BE tiêu thụ</div>
+      </div>
+
+      <!-- Node 6: Flask Stream SSE Endpoint -->
+      <div class="node backend" id="node-6" style="left: 310px; top: 870px;">
+        <div class="node-icon-wrapper">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><circle cx="12" cy="20" r="2"/></svg>
+        </div>
+        <div class="node-title">7. Flask SSE Stream</div>
+        <div class="node-status">Truyền luồng dữ liệu</div>
+      </div>
+
+      <!-- Node 7: Next.js Client User Graph (Bottom) -->
+      <div class="node client" id="node-7" style="left: 310px; top: 980px;">
+        <div class="node-icon-wrapper">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
+        </div>
+        <div class="node-title">8. UI Graph Render</div>
+        <div class="node-status">Kết thúc vòng khép kín</div>
+      </div>
+
+    </div>
+
+    <!-- Right: Logs & Metrics Panel -->
+    <div class="sidebar">
+      
+      <!-- Metrics Card -->
+      <div class="sidebar-card">
+        <h3>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Mô hình khép kín
+        </h3>
+        
+        <div class="metric-row">
+          <span class="metric-label">Hành trình</span>
+          <span class="metric-value" id="stat-route" style="font-size: 0.75rem;">Sẵn sàng...</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Data State</span>
+          <span class="metric-value" id="stat-state">--</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Kafka Topics</span>
+          <span class="metric-value" style="color: #f43f5e;">2 Topics (Phân tách)</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Spark Action</span>
+          <span class="metric-value" style="color: #f59e0b;">Consumes & Publishes</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Flask Source</span>
+          <span class="metric-value" style="color: #10b981;">Topic processed-preds</span>
+        </div>
+      </div>
+
+      <!-- Real-time Console Log Card -->
+      <div class="sidebar-card">
+        <h3>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2"><polyline points="4 17 10 11 14 15 20 9"/><polyline points="14 9 20 9 20 15"/></svg>
+          Traffic Console Logs
+        </h3>
+        <div class="log-panel" id="log-panel">
+          [Closed-Loop Simulator] Sẵn sàng.<br>Hãy bấm nút "Chạy vòng tuần hoàn khép kín" để theo dõi đường đi của tin nhắn được chuyển tiếp qua Spark trước khi vẽ đồ thị!
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    // Coordinate calculations
+    function drawClosedLoopCables() {
+      const svg = document.getElementById('svg-canvas');
+      const rectSVG = svg.getBoundingClientRect();
+
+      function getCenter(nodeId) {
+        const el = document.getElementById('node-' + nodeId);
+        const rect = el.getBoundingClientRect();
+        return {
+          x: rect.left - rectSVG.left + rect.width / 2,
+          y: rect.top - rectSVG.top + rect.height / 2
+        };
+      }
+
+      function setCable(lineId, startNode, endNode) {
+        const start = getCenter(startNode);
+        const end = getCenter(endNode);
+        const pathStr = `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+        
+        document.getElementById(lineId).setAttribute('d', pathStr);
+        document.getElementById(lineId + '-glow').setAttribute('d', pathStr);
+      }
+
+      setCable('cable-0-1', '0', '1');
+      setCable('cable-1-2', '1', '2');
+      setCable('cable-2-3', '2', '3');
+      setCable('cable-3-4', '3', '4');
+      setCable('cable-4-5', '4', '5');
+      setCable('cable-5-6', '5', '6');
+      setCable('cable-6-7', '6', '7');
+    }
+
+    window.addEventListener('load', drawClosedLoopCables);
+    window.addEventListener('resize', drawClosedLoopCables);
+
+    // Dynamic Closed Loop Animation
+    const flowSteps = [
+      {
+        from: "0", to: "1",
+        cableGlow: "cable-0-1-glow",
+        color: "#3b82f6",
+        route: "Client ➔ Flask Server",
+        state: "TRIGGER_SIMULATION",
+        log: "➔ [1] Client gửi yêu cầu kích hoạt quá trình huấn luyện và dự báo trực tiếp đến Flask Backend..."
+      },
+      {
+        from: "1", to: "2",
+        cableGlow: "cable-1-2-glow",
+        color: "#10b981",
+        route: "Flask ➔ PyTorch Loop",
+        state: "LOAD_LSTM_WEIGHTS",
+        log: "➔ [2] Flask khởi chạy Python Worker, thực hiện tải mô hình LSTM lên GPU CUDA..."
+      },
+      {
+        from: "2", to: "3",
+        cableGlow: "cable-2-3-glow",
+        color: "#34d399",
+        route: "CUDA ML ➔ Kafka (Raw)",
+        state: "Price: $138.75 (Raw)",
+        log: "➔ [3] LSTM dự báo xong, bắn dữ liệu THÔ (Raw Price) vào topic 'raw-predictions' của Kafka."
+      },
+      {
+        from: "3", to: "4",
+        cableGlow: "cable-3-4-glow",
+        color: "#f43f5e",
+        route: "Kafka (Raw) ➔ Spark Engine",
+        state: "CONSUME_RAW_PRICE",
+        log: "➔ [4] Apache Spark Cluster kéo dữ liệu thô từ topic 'raw-predictions' về để tính toán..."
+      },
+      {
+        from: "4", to: "5",
+        cableGlow: "cable-4-5-glow",
+        color: "#f59e0b",
+        route: "Spark ➔ Kafka (Processed)",
+        state: "Price: $138.75 (Processed)",
+        log: "➔ [5] Spark xử lý xong (làm tròn số, tính MAE...), bắn gói dữ liệu SAU XỬ LÝ (Processed) ngược lại Kafka ở topic 'processed-predictions'."
+      },
+      {
+        from: "5", to: "6",
+        cableGlow: "cable-5-6-glow",
+        color: "#10b981",
+        route: "Kafka (Processed) ➔ Flask SSE",
+        state: "CONSUME_PROCESSED",
+        log: "➔ [6] Flask Server EventStream lắng nghe topic 'processed-predictions', giải nén và chuẩn bị đẩy luồng..."
+      },
+      {
+        from: "6", to: "7",
+        cableGlow: "cable-6-7-glow",
+        color: "#3b82f6",
+        route: "Flask SSE ➔ Client UI",
+        state: "SSE_HTTP_PUSH",
+        log: "➔ [7] Flask Server đẩy gói tin đã xử lý từ Spark về Client qua SSE. Trình duyệt vẽ đồ thị nến Recharts thành công!"
+      }
+    ];
+
+    let timer = null;
+    let index = 0;
+
+    document.getElementById('btn-transmit').addEventListener('click', () => {
+      if (timer) clearTimeout(timer);
+      index = 0;
+
+      // Reset
+      document.querySelectorAll('.node').forEach(n => n.setAttribute('data-active', 'false'));
+      document.querySelectorAll('.cable-glow').forEach(c => {
+        c.style.strokeDashoffset = '1000';
+        c.style.stroke = 'transparent';
+      });
+      document.getElementById('packet-pill').style.opacity = '0';
+      document.getElementById('log-panel').innerHTML = '';
+
+      function animateLoop() {
+        if (index >= flowSteps.length) {
+          document.getElementById('packet-pill').style.opacity = '0';
+          document.getElementById('log-panel').innerHTML += "<br>[Mạng] Hoàn tất vòng tuần hoàn khép kín. Dữ liệu hiển thị trên UI là dữ liệu đã đi qua Spark!";
+          return;
+        }
+
+        const step = flowSteps[index];
+        const logPanel = document.getElementById('log-panel');
+
+        // Highlight nodes
+        document.getElementById('node-' + step.from).setAttribute('data-active', 'true');
+        document.getElementById('node-' + step.to).setAttribute('data-active', 'true');
+
+        // Glow line
+        const line = document.getElementById(step.cableGlow);
+        line.style.stroke = step.color;
+        line.style.strokeDashoffset = '0';
+
+        // Update stats
+        document.getElementById('stat-route').innerText = step.route;
+        document.getElementById('stat-state').innerText = step.state;
+
+        // Position pill
+        const fromEl = document.getElementById('node-' + step.from);
+        const toEl = document.getElementById('node-' + step.to);
+        const fromRect = fromEl.getBoundingClientRect();
+        const toRect = toEl.getBoundingClientRect();
+        const diagramRect = document.querySelector('.diagram-panel').getBoundingClientRect();
+
+        const xPos = ((fromRect.left + toRect.left) / 2) - diagramRect.left + (fromRect.width / 2);
+        const yPos = ((fromRect.top + toRect.top) / 2) - diagramRect.top + (fromRect.height / 2);
+
+        const pill = document.getElementById('packet-pill');
+        pill.style.left = xPos + 'px';
+        pill.style.top = yPos + 'px';
+        pill.style.opacity = '1';
+        pill.querySelector('.dot').style.background = step.color;
+        document.getElementById('packet-data').innerText = step.state;
+
+        logPanel.innerHTML += (logPanel.innerHTML === '' ? '' : '<br>') + step.log;
+        logPanel.scrollTop = logPanel.scrollHeight;
+
+        index++;
+        const nextDelay = step.from === "2" ? 3000 : 1500;
+        timer = setTimeout(animateLoop, nextDelay);
+      }
+
+      animateLoop();
+    });
+  </script>
+</body>
+</html>
