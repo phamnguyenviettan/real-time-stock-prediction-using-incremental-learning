@@ -7,7 +7,7 @@ via the ``ta`` library (see ``src/data/features.py``).
 import os
 import pandas as pd
 
-from src.config import PROJECT_ROOT
+from src.config import DATA_DIR
 from src.data.features import compute_features
 
 
@@ -19,8 +19,8 @@ def load_monthly_csv(ticker: str, month: str, year: int = 2022) -> pd.DataFrame:
         month: two-digit month string, e.g. "01"
         year: data year (default 2022)
     """
-    data_dir = os.path.join(PROJECT_ROOT, f"NASDAQ_{year}")
-    path = os.path.join(data_dir, ticker, f"{ticker}_{year}-{month}_15min.csv")
+    # Files are stored at: dataset/<TICKER>/<TICKER>_<YEAR>-<MONTH>_15min.csv
+    path = os.path.join(DATA_DIR, ticker, f"{ticker}_{year}-{month}_15min.csv")
     df = pd.read_csv(path, index_col=0, parse_dates=True)
     return df
 
@@ -33,10 +33,11 @@ def load_months(ticker: str, months: list[str], year: int = 2022) -> pd.DataFram
 
 def load_full_year(ticker: str, year: int = 2022) -> pd.DataFrame:
     """Load the full-year 15-min CSV for a ticker."""
-    data_dir = os.path.join(PROJECT_ROOT, f"NASDAQ_{year}")
-    path = os.path.join(data_dir, ticker, f"{ticker}_{year}_full_15min.csv")
+    # Files are stored at: dataset/<TICKER>/<TICKER>_<YEAR>_full_15min.csv
+    path = os.path.join(DATA_DIR, ticker, f"{ticker}_{year}_full_15min.csv")
     df = pd.read_csv(path, index_col=0, parse_dates=True)
     return df
+
 
 
 # ── Feature-enriched loaders ─────────────────────────────────────────────────
