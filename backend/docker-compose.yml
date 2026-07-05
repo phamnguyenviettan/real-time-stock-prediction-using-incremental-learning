@@ -5,6 +5,9 @@ services:
     ports:
       - "9092:9092"   # Windows host & WSL truy cập qua port này
       - "29092:29092" # Internal Docker network
+    # host.docker.internal trỏ đến Windows host IP, hoạt động cả trong Docker & WSL
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: 'broker,controller'
@@ -12,8 +15,9 @@ services:
       # PLAINTEXT_INT -> dành cho Spark container bên trong Docker network
       # CONTROLLER    -> dành cho KRaft controller internal
       KAFKA_LISTENERS: 'PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_INT://:29092'
-      # Dùng 0.0.0.0 để bind tất cả interfaces, client tự resolve qua hostname/IP
-      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://localhost:9092,PLAINTEXT_INT://kafka:29092'
+      # host.docker.internal: resolve đúng cả từ WSL lẫn Windows host
+      # WSL client kết nối qua Windows host IP, metadata trả về host.docker.internal:9092
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://host.docker.internal:9092,PLAINTEXT_INT://kafka:29092'
       KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_INT:PLAINTEXT'
       KAFKA_CONTROLLER_QUORUM_VOTERS: '1@localhost:9093'
