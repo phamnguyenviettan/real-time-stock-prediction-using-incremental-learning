@@ -114,7 +114,9 @@ export default function RealtimeForecast() {
       }
 
       // Connect directly to Flask port 5000 (SSE) to bypass Next.js server proxy timeout limits
-      const eventSource = new EventSource("http://127.0.0.1:5000/api/train/stream");
+      // Use stock-predictions topic if Spark is not running (no spark-processed-predictions messages)
+      const sseUrl = `http://127.0.0.1:5000/api/train/stream?topic=stock-predictions`;
+      const eventSource = new EventSource(sseUrl);
       eventSourceRef.current = eventSource;
 
       eventSource.onopen = () => {
@@ -123,8 +125,22 @@ export default function RealtimeForecast() {
 
       eventSource.onmessage = (event) => {
         try {
-          const payload: PredictPoint = JSON.parse(event.data);
-          
+          const payload: PredictPoint & { type?: string; broker?: string; topic?: string } = JSON.parse(event.data);
+
+          // Handle server-sent control messages
+          if (payload.type === "connected") {
+            setKafkaLogs((prev) => [...prev, `[Kafka Consumer] ✓ Kết nối thành công tới broker ${payload.broker}, topic: ${payload.topic}`]);
+            return;
+          }
+          if (payload.type === "broker_unavailable" || payload.type === "error") {
+            setStatus("failed");
+            setIsPlaying(false);
+            setError((payload as any).error || "Lỗi kết nối Kafka broker.");
+            setKafkaLogs((prev) => [...prev, `[Kafka Consumer] ✗ Lỗi: ${(payload as any).error}`]);
+            eventSource.close();
+            return;
+          }
+
           if (payload.status === "completed") {
             setStatus("completed");
             setIsPlaying(false);
@@ -183,11 +199,18 @@ export default function RealtimeForecast() {
 
       eventSource.onerror = (err) => {
         console.error("SSE Connection Error:", err);
-        setKafkaLogs((prev) => [...prev, "[Kafka Consumer] Đứt kết nối hoặc Kafka Broker chưa chạy. Đang kết nối lại..."]);
+        // ERR_EMPTY_RESPONSE hoặc server crash → thông báo thay vì loop reconnect
+        if (eventSource.readyState === EventSource.CLOSED) {
+          setKafkaLogs((prev) => [...prev, "[Kafka Consumer] ✗ Kết nối SSE bị đóng. Server Flask có thể đã tắt hoặc Kafka chưa chạy."]);
+          setStatus("failed");
+          setIsPlaying(false);
+        } else {
+          setKafkaLogs((prev) => [...prev, "[Kafka Consumer] Lỗi kết nối SSE, đang thử lại..."]);
+        }
       };
 
       // Call API to boot incremental_kafka_producer.py in background on Flask side
-      const res = await fetch(`${API_BASE}/train?ticker=${selectedTicker}&action=run-demo&max_ticks=80&delay=${delay}`, {
+      const res = await fetch(`${API_BASE}/train?ticker=${selectedTicker}&action=demo&max_ticks=80&delay=${delay}`, {
         method: "POST"
       });
 

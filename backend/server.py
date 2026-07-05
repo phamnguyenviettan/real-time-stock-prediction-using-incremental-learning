@@ -257,17 +257,23 @@ def start_train():
     action = request.args.get("action", "start")
     max_ticks = int(request.args.get("max_ticks", 100))
     delay = float(request.args.get("delay", 1.0))
-    
+
     if ticker not in TICKERS:
         return jsonify({"error": f"Ticker {ticker} not supported"}), 400
-        
+
     state = active_trainers.get(ticker, {"status": "idle"})
     if state["status"] == "running":
         return jsonify({"status": "running", "message": "Tiến trình đang chạy."})
-        
+
     log_path = os.path.join(LOG_DIR, f"{ticker}_train.log")
-    script = "scripts/run_experiment.py" if action == "start" else "scripts/incremental_kafka_producer.py"
-    
+
+    # action="start"  → full experiment (offline + incremental)
+    # action="demo" or "run-demo" → Kafka incremental producer (stream mode)
+    if action in ("demo", "run-demo"):
+        script = "scripts/incremental_kafka_producer.py"
+    else:
+        script = "scripts/run_experiment.py"
+
     # Start thread
     thread = threading.Thread(
         target=run_python_subprocess,
@@ -275,42 +281,92 @@ def start_train():
     )
     thread.daemon = True
     thread.start()
-    
+
     active_trainers[ticker] = {
         "status": "running",
         "script": script
     }
-    
+
     return jsonify({
         "status": "started",
         "message": f"Khởi chạy thành công tiến trình {script} cho {ticker}."
     })
 
+
 @app.route("/api/train/stream", methods=["GET"])
 def stream_kafka_messages():
-    """Stream consumed messages from spark-processed-predictions Kafka topic via Server-Sent Events."""
+    """Stream consumed messages from Kafka topic via Server-Sent Events.
+    
+    Listens to 'spark-processed-predictions' first (Spark output).
+    Falls back to 'stock-predictions' (raw producer output) if Spark is not running.
+    """
+    topic = request.args.get("topic", "spark-processed-predictions")
+
     def event_stream():
-        from kafka import KafkaConsumer
+        from kafka import KafkaConsumer, TopicPartition
+        from kafka.errors import NoBrokersAvailable, KafkaError
         bootstrap = get_kafka_bootstrap()
-        print(f"[Kafka SSE Consumer] Kết nối tới Kafka tại {bootstrap}...")
+
+        # ── CRITICAL: yield a comment/ping IMMEDIATELY before any blocking call ──
+        # This forces Flask to send HTTP 200 + headers right away,
+        # preventing ERR_EMPTY_RESPONSE if Kafka connection takes time or fails.
+        yield ": ping\n\n"
+
+        print(f"[Kafka SSE] Đang kết nối tới {bootstrap}, topic={topic}...")
+
+        consumer = None
         try:
-            # Connect to local Kafka cluster broker, listening to Spark output topic
             consumer = KafkaConsumer(
-                "spark-processed-predictions",
+                topic,
                 bootstrap_servers=[bootstrap],
                 auto_offset_reset="latest",
+                enable_auto_commit=True,
                 value_deserializer=lambda m: json.loads(m.decode("utf-8")),
-                consumer_timeout_ms=60000  # Stop streaming if idle for 60s
+                consumer_timeout_ms=120000,  # 2 phút timeout nếu không có message
+                request_timeout_ms=10000,
+                session_timeout_ms=10000,
             )
-            print(f"[Kafka SSE Consumer] Kết nối thành công đến topic spark-processed-predictions tại {bootstrap}.")
-            for message in consumer:
-                yield f"data: {json.dumps(message.value)}\n\n"
-        except Exception as e:
-            print(f"[Kafka SSE Consumer] Lỗi: {str(e)}")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            print(f"[Kafka SSE] Kết nối thành công đến topic '{topic}' tại {bootstrap}.")
+            yield f"data: {json.dumps({'type': 'connected', 'topic': topic, 'broker': bootstrap})}\n\n"
 
-    return Response(event_stream(), mimetype="text/event-stream")
+            # Keep-alive counter: send ping every ~30 iterations if no message
+            idle_count = 0
+            for message in consumer:
+                idle_count = 0
+                yield f"data: {json.dumps(message.value)}\n\n"
+
+        except NoBrokersAvailable:
+            err = f"Kafka broker không khả dụng tại {bootstrap}. Hãy chắc chắn Docker đang chạy."
+            print(f"[Kafka SSE] Lỗi: {err}")
+            yield f"data: {json.dumps({'error': err, 'type': 'broker_unavailable'})}\n\n"
+
+        except Exception as e:
+            err = str(e)
+            print(f"[Kafka SSE] Lỗi: {err}")
+            yield f"data: {json.dumps({'error': err, 'type': 'error'})}\n\n"
+
+        finally:
+            if consumer is not None:
+                try:
+                    consumer.close()
+                except Exception:
+                    pass
+            print(f"[Kafka SSE] Kết nối đã đóng.")
+
+    # Proper SSE response with required headers
+    response = Response(
+        event_stream(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",        # Disable nginx buffering
+            "Access-Control-Allow-Origin": "*", # CORS for cross-origin SSE (Next.js -> Flask)
+            "Connection": "keep-alive",
+        }
+    )
+    return response
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
+    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+
