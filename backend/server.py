@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import time
+import socket
 import subprocess
 import threading
 from flask import Flask, jsonify, request, Response
@@ -27,6 +28,15 @@ data_cache = {}
 # Active training threads reference
 active_trainers = {}
 trainers_lock = threading.Lock()
+
+
+def get_kafka_bootstrap() -> str:
+    """Đọc địa chỉ Kafka bootstrap từ biến môi trường.
+    Ưu tiên: KAFKA_BOOTSTRAP_SERVERS (có thể set theos cơ chế WSL/Docker)
+    Mặc định: localhost:9092
+    """
+    return os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+
 
 def load_ticker_data(ticker):
     """Load and cache ticker dataframe."""
@@ -281,16 +291,18 @@ def stream_kafka_messages():
     """Stream consumed messages from spark-processed-predictions Kafka topic via Server-Sent Events."""
     def event_stream():
         from kafka import KafkaConsumer
+        bootstrap = get_kafka_bootstrap()
+        print(f"[Kafka SSE Consumer] Kết nối tới Kafka tại {bootstrap}...")
         try:
             # Connect to local Kafka cluster broker, listening to Spark output topic
             consumer = KafkaConsumer(
                 "spark-processed-predictions",
-                bootstrap_servers=["127.0.0.1:9092"],
+                bootstrap_servers=[bootstrap],
                 auto_offset_reset="latest",
                 value_deserializer=lambda m: json.loads(m.decode("utf-8")),
                 consumer_timeout_ms=60000  # Stop streaming if idle for 60s
             )
-            print("[Kafka SSE Consumer] Kết nối thành công đến topic spark-processed-predictions.")
+            print(f"[Kafka SSE Consumer] Kết nối thành công đến topic spark-processed-predictions tại {bootstrap}.")
             for message in consumer:
                 yield f"data: {json.dumps(message.value)}\n\n"
         except Exception as e:
@@ -298,6 +310,7 @@ def stream_kafka_messages():
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return Response(event_stream(), mimetype="text/event-stream")
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
